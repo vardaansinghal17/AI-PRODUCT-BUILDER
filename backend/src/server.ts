@@ -3,6 +3,8 @@ import cors from "cors";
 import dotenv from "dotenv";
 import type { Application, Request, Response } from "express";
 import testRoute from "./routes/testRoute.js";
+import plannerRoute from "./routes/plannerRoute.js";
+
 
 dotenv.config();
 
@@ -17,6 +19,8 @@ app.get("/", (req: Request, res: Response) => {
   res.send("AI Product Builder API is running...");
 });
 
+
+app.use("/api", plannerRoute);
 app.use("/api", testRoute);
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
