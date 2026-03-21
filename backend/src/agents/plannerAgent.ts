@@ -1,4 +1,4 @@
-import { generateText } from "../services/aiService.js";
+import { generateText } from "../services/aiService";
 
 interface Plan {
   tasks: string[];

@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { plannerAgent } from "../agents/plannerAgent.js";
+import { plannerAgent } from "../agents/plannerAgent";
 
 export async function generatePlan(req: Request, res: Response) {
   try {

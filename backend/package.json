@@ -3,9 +3,8 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
-  "type": "module",
   "scripts": {
-    "dev": "nodemon src/server.ts",
+    "dev": "nodemon --exec ts-node src/server.ts",
     "start": "ts-node src/server.ts"
   },
   "keywords": [],
