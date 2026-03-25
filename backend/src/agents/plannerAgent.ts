@@ -4,6 +4,18 @@ interface Plan {
   tasks: string[];
 }
 
+function extractJSON(raw: string): string {
+  const cleaned = raw.replace(/```json/g, "").replace(/```/g, "").trim();
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+
+  if (start === -1 || end === -1) {
+    throw new Error("No JSON found in planner response");
+  }
+
+  return cleaned.substring(start, end + 1);
+}
+
 export async function plannerAgent(idea: string): Promise<Plan> {
   const prompt = `
 You are a senior software architect.
@@ -27,7 +39,12 @@ ${idea}
   const response = await generateText(prompt);
 
   try {
-    const parsed: Plan = JSON.parse(response);
+    const parsed: Plan = JSON.parse(extractJSON(response));
+
+    if (!Array.isArray(parsed.tasks)) {
+      throw new Error("Planner response must include a tasks array");
+    }
+
     return parsed;
   } catch (error) {
     console.error("Planner parsing error:", response);

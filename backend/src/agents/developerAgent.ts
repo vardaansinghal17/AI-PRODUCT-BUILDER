@@ -5,39 +5,61 @@ interface GeneratedFile {
   code: string;
 }
 
-function cleanJSON(raw: string): string {
-  return raw
-    .replace(/```json/g, "")
-    .replace(/```/g, "")
-    .trim();
+function extractJSON(text: string): string {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+
+  if (start === -1 || end === -1) {
+    throw new Error("No JSON found");
+  }
+
+  return text.substring(start, end + 1);
 }
 
-export async function developerAgent(task: string): Promise<GeneratedFile> {
+export async function developerAgent(
+  task: string,
+  context: string
+): Promise<GeneratedFile> {
   const prompt = `
-You are a senior full-stack developer.
+You are a TypeScript code generator working inside an existing generated app.
 
-Generate code for the following task:
+You are working on an existing project.
 
-Task: ${task}
+EXISTING PROJECT FILES:
+${context}
 
-Rules:
-- Write clean, production-ready code
+TASK:
+${task}
+
+CRITICAL RULES:
+- Output ONLY valid JSON
+- NO explanations
+- NO markdown
+- ONLY ONE file
+- If the file already exists, update it instead of creating a duplicate
+- Do NOT create duplicate files
 - Use TypeScript
-- Only generate ONE file
-- Return ONLY JSON
+- Use meaningful filenames such as src/index.ts, src/server.ts, package.json, or tsconfig.json
+- Return the full file content, not a diff
+- Keep imports and scripts consistent with the existing project
 
-Format:
+FORMAT:
 {
-  "filename": "path/to/file.ts",
-  "code": "full code here"
+  "filename": "src/example.ts",
+  "code": "FULL WORKING CODE"
 }
 `;
 
   const response = await generateText(prompt);
 
   try {
-    const cleaned = cleanJSON(response);
+    const cleaned = extractJSON(response);
     const parsed: GeneratedFile = JSON.parse(cleaned);
+
+    if (typeof parsed.filename !== "string" || typeof parsed.code !== "string") {
+      throw new Error("Developer response is missing filename or code");
+    }
+
     return parsed;
   } catch (error) {
     console.error("Developer parsing error:", response);
