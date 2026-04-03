@@ -4,8 +4,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "build": "tsc",
     "dev": "nodemon --exec ts-node src/server.ts",
-    "start": "ts-node src/server.ts"
+    "start": "ts-node src/server.ts",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [],
   "author": "",
@@ -14,7 +16,9 @@
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
-    "openai": "^6.32.0"
+    "fs": "^0.0.1-security",
+    "openai": "^6.32.0",
+    "path": "^0.12.7"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",

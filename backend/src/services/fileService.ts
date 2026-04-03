@@ -85,6 +85,11 @@ export function getProjectContext(): string {
   return files.sort().join("\n\n");
 }
 
+export function getGeneratedDir(): string {
+  ensureGeneratedDir();
+  return GENERATED_DIR;
+}
+
 export function ensureGeneratedProjectScaffold(): void {
   ensureGeneratedDir();
 

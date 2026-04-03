@@ -32,10 +32,14 @@ function getClient(): OpenAI {
 
 export async function generateText(prompt: string): Promise<string> {
   try {
+    console.log("[AI] Starting text generation", {
+      promptLength: prompt.length,
+    });
+
     const client = getClient();
 
     const response = await client.chat.completions.create({
-      model: "openai/gpt-4o-mini", 
+      model: "openai/gpt-4o-mini",
       messages: [
         {
           role: "user",
@@ -44,7 +48,14 @@ export async function generateText(prompt: string): Promise<string> {
       ],
     });
 
-    return response.choices?.[0]?.message?.content ?? "";
+    const content = response.choices?.[0]?.message?.content ?? "";
+
+    console.log("[AI] Text generation completed", {
+      responseLength: content.length,
+      hasChoices: Boolean(response.choices?.length),
+    });
+
+    return content;
   } catch (error) {
     console.error("AI Error:", error);
 
