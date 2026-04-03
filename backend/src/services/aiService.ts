@@ -39,7 +39,7 @@ export async function generateText(prompt: string): Promise<string> {
     const client = getClient();
 
     const response = await client.chat.completions.create({
-      model: "openai/gpt-4o-mini", 
+      model: "openai/gpt-4o-mini",
       messages: [
         {
           role: "user",
@@ -58,6 +58,7 @@ export async function generateText(prompt: string): Promise<string> {
     return content;
   } catch (error) {
     console.error("AI Error:", error);
+
     if (error instanceof Error) {
       throw new AIServiceError(
         `Failed to generate AI response: ${error.message}`

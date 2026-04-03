@@ -1,83 +1,134 @@
 import { Request, Response } from "express";
-import { plannerAgent } from "../agents/plannerAgent";
+import { debugAgent } from "../agents/debugAgent";
 import { developerAgent } from "../agents/developerAgent";
+import { plannerAgent } from "../agents/plannerAgent";
 import { AIServiceError } from "../services/aiService";
+import { runGeneratedProject } from "../services/executionService";
 import {
   ensureGeneratedProjectScaffold,
   getProjectContext,
   writeFile,
 } from "../services/fileService";
 
+const MAX_TASKS = 5;
+const MAX_DEBUG_RETRIES = 2;
+
+function getIdea(body: unknown): string {
+  if (!body || typeof body !== "object") {
+    return "";
+  }
+
+  const maybeIdea = (body as { idea?: unknown }).idea;
+  return typeof maybeIdea === "string" ? maybeIdea.trim() : "";
+}
+
 export async function buildProject(req: Request, res: Response) {
   try {
-    console.log("[BUILD] Incoming request", {
-      method: req.method,
-      path: req.originalUrl,
-      hasBody: Boolean(req.body),
-      bodyKeys:
-        req.body && typeof req.body === "object" ? Object.keys(req.body) : [],
-    });
-
-    const body =
-      req.body && typeof req.body === "object"
-        ? (req.body as { idea?: unknown })
-        : {};
-    const idea = typeof body.idea === "string" ? body.idea.trim() : "";
+    const idea = getIdea(req.body);
 
     if (!idea) {
       console.log("[BUILD] Missing idea in request body");
       return res.status(400).json({ error: "Idea is required" });
     }
 
-    console.log("[BUILD] Ensuring generated scaffold");
     ensureGeneratedProjectScaffold();
 
-    console.log("[BUILD] Generating project plan");
     const plan = await plannerAgent(idea);
-    const generatedFiles: string[] = [];
+    const plannedTasks = Array.isArray(plan.tasks)
+      ? plan.tasks.slice(0, MAX_TASKS)
+      : [];
+    const generatedFiles = new Set<string>();
     const skippedTasks: string[] = [];
+    const debuggedTasks: string[] = [];
 
-    console.log("[BUILD] Planner result", {
-      tasks: plan.tasks,
-      taskCount: plan.tasks.length,
-    });
+    for (const task of plannedTasks) {
+      if (typeof task !== "string" || !task.trim()) {
+        skippedTasks.push(String(task));
+        continue;
+      }
 
-    for (const task of plan.tasks) {
-      console.log("[BUILD] Processing task", { task });
-
+      console.log("[BUILD] generating...", { task });
       const context = getProjectContext();
-      console.log("[BUILD] Current project context snapshot", {
-        contextLength: context.length,
-      });
+      const generatedFile = await developerAgent(task, context);
 
-      const file = await developerAgent(task, context);
-
-      if (!file?.filename || !file?.code) {
-        console.log("[BUILD] Invalid file response, skipping task", { task });
+      if (!generatedFile) {
         skippedTasks.push(task);
         continue;
       }
 
-      console.log("[BUILD] Writing generated file", {
-        filename: file.filename,
-        codeLength: file.code.length,
-      });
-      writeFile(file.filename, file.code);
-      generatedFiles.push(file.filename);
+      if (!generatedFile.filename.trim()) {
+        skippedTasks.push(task);
+        continue;
+      }
+
+      writeFile(generatedFile.filename, generatedFile.code);
+      generatedFiles.add(generatedFile.filename);
+
+      let executionResult;
+      let retries = 0;
+
+      while (true) {
+        console.log("[BUILD] running...", {
+          task,
+          attempt: retries + 1,
+        });
+        executionResult = await runGeneratedProject();
+
+        if (executionResult.success) {
+          break;
+        }
+
+        if (retries >= MAX_DEBUG_RETRIES) {
+          console.warn("[BUILD] Max debug retries reached", {
+            task,
+            stderr: executionResult.stderr,
+          });
+          skippedTasks.push(task);
+          break;
+        }
+
+        console.log("[BUILD] fixing error...", {
+          task,
+          attempt: retries + 1,
+          stage: executionResult.stage,
+        });
+
+        const debugContext = getProjectContext();
+        const combinedLogs = [
+          `TASK: ${task}`,
+          `STAGE: ${executionResult.stage}`,
+          `EXIT CODE: ${executionResult.exitCode ?? "null"}`,
+          `STDOUT:`,
+          executionResult.stdout || "(empty)",
+          `STDERR:`,
+          executionResult.stderr || "(empty)",
+        ].join("\n");
+
+        const fixedFile = await debugAgent(combinedLogs, debugContext);
+
+        if (!fixedFile || !fixedFile.filename.trim()) {
+          console.warn("[BUILD] Debug agent returned invalid fix", { task });
+          skippedTasks.push(task);
+          break;
+        }
+
+        writeFile(fixedFile.filename, fixedFile.code);
+        generatedFiles.add(fixedFile.filename);
+        debuggedTasks.push(task);
+        retries += 1;
+      }
     }
 
-    console.log("[BUILD] Finalizing generated scaffold");
     ensureGeneratedProjectScaffold();
 
-    console.log("[BUILD] Build completed", {
-      generatedFiles,
-      skippedTasks,
-    });
     res.json({
       success: true,
       message: "Project generated successfully",
-      plan,
-      generatedFiles,
+      plan: {
+        tasks: plannedTasks,
+      },
+      generatedFiles: Array.from(generatedFiles),
+      debuggedTasks,
       skippedTasks,
     });
   } catch (error) {

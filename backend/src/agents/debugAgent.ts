@@ -1,9 +1,5 @@
 import { generateText } from "../services/aiService";
-
-export interface GeneratedFile {
-  filename: string;
-  code: string;
-}
+import type { GeneratedFile } from "./developerAgent";
 
 function extractJSON(text: string): string | null {
   const start = text.indexOf("{");
@@ -42,29 +38,28 @@ function parseGeneratedFile(response: string): GeneratedFile | null {
   }
 }
 
-export async function developerAgent(
-  task: string,
+export async function debugAgent(
+  errorLogs: string,
   context: string
 ): Promise<GeneratedFile | null> {
   const prompt = `
-You are a senior TypeScript engineer working inside a real existing project.
+You are a senior TypeScript debugging agent working inside a real existing project.
 
-Your job is to make one clean project change for the task below while staying consistent with the current codebase.
+Analyze the error logs and fix the broken code.
 
 PROJECT CONTEXT:
 ${context || "No existing generated files yet."}
 
-TASK:
-${task}
+ERROR LOGS:
+${errorLogs}
 
 RULES:
 - Return ONLY valid JSON
 - Return exactly one file
-- Update an existing file when appropriate instead of creating duplicates
-- Never invent duplicate filenames for the same responsibility
-- Maintain consistency with current imports, scripts, file structure, and naming
+- Fix the existing file that caused the problem when possible
+- Keep the project structure and naming consistent
 - Return the full file contents, not a diff
-- Use a meaningful relative filename like src/index.ts or package.json
+- Do not create duplicate files unless the error clearly requires a missing file
 
 FORMAT:
 {
@@ -77,7 +72,7 @@ FORMAT:
   const parsed = parseGeneratedFile(response);
 
   if (!parsed) {
-    console.warn("Skipping invalid developer response:", response);
+    console.warn("Skipping invalid debug response:", response);
     return null;
   }
 

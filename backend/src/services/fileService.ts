@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 
 const GENERATED_DIR = path.resolve(__dirname, "../../generated");
+const IGNORED_DIRECTORIES = new Set(["node_modules", "dist", ".git"]);
 
 interface GeneratedPackageJson {
   name?: string;
@@ -13,12 +14,12 @@ interface GeneratedPackageJson {
   devDependencies?: Record<string, string>;
 }
 
-function ensureGeneratedDir() {
+function ensureGeneratedDir(): void {
   fs.mkdirSync(GENERATED_DIR, { recursive: true });
 }
 
 function resolveGeneratedPath(filename: string): string {
-  const normalized = filename.replace(/^[./\\]+/, "");
+  const normalized = filename.replace(/^[./\\]+/, "").trim();
   const targetPath = path.resolve(GENERATED_DIR, normalized);
 
   if (!targetPath.startsWith(GENERATED_DIR)) {
@@ -40,54 +41,56 @@ function readJSONFile<T>(filePath: string): T | null {
   }
 }
 
-export function writeFile(filename: string, code: string) {
+function collectProjectFiles(dir: string, files: string[]): void {
+  const items = fs.readdirSync(dir, { withFileTypes: true });
+
+  for (const item of items) {
+    if (item.isDirectory()) {
+      if (IGNORED_DIRECTORIES.has(item.name)) {
+        continue;
+      }
+
+      collectProjectFiles(path.join(dir, item.name), files);
+      continue;
+    }
+
+    const fullPath = path.join(dir, item.name);
+
+    try {
+      const content = fs.readFileSync(fullPath, "utf-8");
+      const relativePath = path.relative(GENERATED_DIR, fullPath).replace(/\\/g, "/");
+      files.push(`FILE: ${relativePath}\n${content}`);
+    } catch (error) {
+      console.warn("Skipping unreadable generated file:", fullPath, error);
+    }
+  }
+}
+
+export function writeFile(filename: string, code: string): void {
   ensureGeneratedDir();
 
   const filePath = resolveGeneratedPath(filename);
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, code, "utf-8");
-  console.log(" File written:", filePath);
 }
 
 export function getProjectContext(): string {
-  if (!fs.existsSync(GENERATED_DIR)) return "";
-
-  const files: string[] = [];
-  const ignoredDirectories = new Set(["node_modules", "dist", ".git"]);
-
-  function readDir(dir: string) {
-    const items = fs.readdirSync(dir);
-
-    for (const item of items) {
-      const fullPath = path.join(dir, item);
-
-      if (fs.statSync(fullPath).isDirectory()) {
-        if (ignoredDirectories.has(item)) {
-          continue;
-        }
-
-        readDir(fullPath);
-      } else {
-        try {
-          const content = fs.readFileSync(fullPath, "utf-8");
-
-          files.push(`
-FILE: ${path.relative(GENERATED_DIR, fullPath)}
-${content}
-          `);
-        } catch (err) {
-          console.log("Skipping unreadable file:", fullPath);
-        }
-      }
-    }
+  if (!fs.existsSync(GENERATED_DIR)) {
+    return "";
   }
 
-  readDir(GENERATED_DIR);
+  const files: string[] = [];
+  collectProjectFiles(GENERATED_DIR, files);
 
-  return files.join("\n");
+  return files.sort().join("\n\n");
 }
 
-export function ensureGeneratedProjectScaffold() {
+export function getGeneratedDir(): string {
+  ensureGeneratedDir();
+  return GENERATED_DIR;
+}
+
+export function ensureGeneratedProjectScaffold(): void {
   ensureGeneratedDir();
 
   const packageJsonPath = path.join(GENERATED_DIR, "package.json");
@@ -141,10 +144,6 @@ export function ensureGeneratedProjectScaffold() {
 
   if (!fs.existsSync(entryPointPath)) {
     fs.mkdirSync(path.dirname(entryPointPath), { recursive: true });
-    fs.writeFileSync(
-      entryPointPath,
-      'console.log("Generated app ready");\n',
-      "utf-8"
-    );
+    fs.writeFileSync(entryPointPath, 'console.log("Generated app ready");\n', "utf-8");
   }
 }

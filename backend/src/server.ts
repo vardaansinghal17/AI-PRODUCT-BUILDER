@@ -3,14 +3,13 @@ import cors from "cors";
 import dotenv from "dotenv";
 import type { Application, NextFunction, Request, Response } from "express";
 import testRoute from "./routes/testRoute";
-import plannerRoute from "./routes/plannerRoute";
 import buildRoute from "./routes/buildRoute";
+import plannerRoute from "./routes/plannerRoute";
 
 dotenv.config();
 
 const app: Application = express();
 const PORT = process.env.PORT || 5000;
-
 
 app.use(cors());
 app.use(express.json());
@@ -34,11 +33,9 @@ app.get("/", (req: Request, res: Response) => {
   res.send("AI Product Builder API is running...");
 });
 
-
 app.use("/api", plannerRoute);
 app.use("/api", testRoute);
 app.use("/api", buildRoute);
-
 
 app.use((err: unknown, req: Request, res: Response, next: NextFunction) => {
   if (err instanceof SyntaxError && "body" in err) {
@@ -72,6 +69,5 @@ app.listen(PORT, () => {
     testAI: `http://localhost:${PORT}/api/test-ai`,
     plan: `http://localhost:${PORT}/api/plan`,
     build: `http://localhost:${PORT}/api/build`,
-    buildV1: `http://localhost:${PORT}/api/v1/build`,
   });
 });
