@@ -3,6 +3,16 @@ import OpenAI from "openai";
 
 dotenv.config();
 
+export class AIServiceError extends Error {
+  statusCode: number;
+
+  constructor(message: string, statusCode = 502) {
+    super(message);
+    this.name = "AIServiceError";
+    this.statusCode = statusCode;
+  }
+}
+
 function getClient(): OpenAI {
   const apiKey = process.env.OPENROUTER_API_KEY;
 
@@ -37,6 +47,13 @@ export async function generateText(prompt: string): Promise<string> {
     return response.choices?.[0]?.message?.content ?? "";
   } catch (error) {
     console.error("AI Error:", error);
-    throw new Error("Failed to generate AI response");
+
+    if (error instanceof Error) {
+      throw new AIServiceError(
+        `Failed to generate AI response: ${error.message}`
+      );
+    }
+
+    throw new AIServiceError("Failed to generate AI response");
   }
 }

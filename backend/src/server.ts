@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import type { Application, Request, Response } from "express";
 import testRoute from "./routes/testRoute";
+import buildRoute from "./routes/buildRoute";
 import plannerRoute from "./routes/plannerRoute";
 
 dotenv.config();
@@ -21,6 +22,7 @@ app.get("/", (req: Request, res: Response) => {
 
 app.use("/api", plannerRoute);
 app.use("/api", testRoute);
+app.use("/api", buildRoute);
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
