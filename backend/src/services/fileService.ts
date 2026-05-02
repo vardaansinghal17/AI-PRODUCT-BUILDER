@@ -18,6 +18,14 @@ function ensureGeneratedDir(): void {
   fs.mkdirSync(GENERATED_DIR, { recursive: true });
 }
 
+export function resetGeneratedDir(): void {
+  if (fs.existsSync(GENERATED_DIR)) {
+    fs.rmSync(GENERATED_DIR, { recursive: true, force: true });
+  }
+
+  ensureGeneratedDir();
+}
+
 function resolveGeneratedPath(filename: string): string {
   const normalized = filename.replace(/^[./\\]+/, "").trim();
   const targetPath = path.resolve(GENERATED_DIR, normalized);

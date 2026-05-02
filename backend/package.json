@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "build": "tsc",
-    "dev": "nodemon --exec ts-node src/server.ts",
+    "dev": "nodemon --ignore generated --exec ts-node src/server.ts",
     "start": "ts-node src/server.ts",
     "typecheck": "tsc --noEmit"
   },

@@ -7,11 +7,25 @@ import { runGeneratedProject } from "../services/executionService";
 import {
   ensureGeneratedProjectScaffold,
   getProjectContext,
+  resetGeneratedDir,
   writeFile,
 } from "../services/fileService";
 
-const MAX_TASKS = 5;
-const MAX_DEBUG_RETRIES = 2;
+const MAX_DEBUG_ATTEMPTS = 3;
+
+interface DebugAttemptResult {
+  attempt: number;
+  fixedFile: string | null;
+  success: boolean;
+  error: string | null;
+  execution: {
+    stage: "build" | "run";
+    stdout: string;
+    stderr: string;
+    exitCode: number | null;
+    timedOut: boolean;
+  };
+}
 
 function getIdea(body: unknown): string {
   if (!body || typeof body !== "object") {
@@ -27,29 +41,18 @@ export async function buildProject(req: Request, res: Response) {
     const idea = getIdea(req.body);
 
     if (!idea) {
-      console.log("[BUILD] Missing idea in request body");
       return res.status(400).json({ error: "Idea is required" });
     }
 
+    resetGeneratedDir();
     ensureGeneratedProjectScaffold();
 
     const plan = await plannerAgent(idea);
-    const plannedTasks = Array.isArray(plan.tasks)
-      ? plan.tasks.slice(0, MAX_TASKS)
-      : [];
-    const generatedFiles = new Set<string>();
+    const generatedFiles: string[] = [];
     const skippedTasks: string[] = [];
-    const debuggedTasks: string[] = [];
 
-    for (const task of plannedTasks) {
-      if (typeof task !== "string" || !task.trim()) {
-        skippedTasks.push(String(task));
-        continue;
-      }
-
-      console.log("[BUILD] generating...", { task });
-      const context = getProjectContext();
-      const generatedFile = await developerAgent(task, context);
+    for (const task of plan.tasks) {
+      const generatedFile = await developerAgent(task);
 
       if (!generatedFile) {
         skippedTasks.push(task);
@@ -62,74 +65,69 @@ export async function buildProject(req: Request, res: Response) {
       }
 
       writeFile(generatedFile.filename, generatedFile.code);
-      generatedFiles.add(generatedFile.filename);
-
-      let executionResult;
-      let retries = 0;
-
-      while (true) {
-        console.log("[BUILD] running...", {
-          task,
-          attempt: retries + 1,
-        });
-        executionResult = await runGeneratedProject();
-
-        if (executionResult.success) {
-          break;
-        }
-
-        if (retries >= MAX_DEBUG_RETRIES) {
-          console.warn("[BUILD] Max debug retries reached", {
-            task,
-            stderr: executionResult.stderr,
-          });
-          skippedTasks.push(task);
-          break;
-        }
-
-        console.log("[BUILD] fixing error...", {
-          task,
-          attempt: retries + 1,
-          stage: executionResult.stage,
-        });
-
-        const debugContext = getProjectContext();
-        const combinedLogs = [
-          `TASK: ${task}`,
-          `STAGE: ${executionResult.stage}`,
-          `EXIT CODE: ${executionResult.exitCode ?? "null"}`,
-          `STDOUT:`,
-          executionResult.stdout || "(empty)",
-          `STDERR:`,
-          executionResult.stderr || "(empty)",
-        ].join("\n");
-
-        const fixedFile = await debugAgent(combinedLogs, debugContext);
-
-        if (!fixedFile || !fixedFile.filename.trim()) {
-          console.warn("[BUILD] Debug agent returned invalid fix", { task });
-          skippedTasks.push(task);
-          break;
-        }
-
-        writeFile(fixedFile.filename, fixedFile.code);
-        generatedFiles.add(fixedFile.filename);
-        debuggedTasks.push(task);
-        retries += 1;
-      }
+      generatedFiles.push(generatedFile.filename);
     }
 
-    ensureGeneratedProjectScaffold();
+    let execution = await runGeneratedProject();
+    const debugAttempts: DebugAttemptResult[] = [];
 
-    res.json({
-      success: true,
-      message: "Project generated successfully",
-      plan: {
-        tasks: plannedTasks,
-      },
-      generatedFiles: Array.from(generatedFiles),
-      debuggedTasks,
+    for (
+      let attempt = 1;
+      !execution.success && attempt <= MAX_DEBUG_ATTEMPTS;
+      attempt += 1
+    ) {
+      const projectContext = getProjectContext();
+      const debuggedFile = await debugAgent(
+        execution.stderr || execution.stdout || "Unknown execution failure",
+        projectContext
+      );
+
+      if (!debuggedFile) {
+        debugAttempts.push({
+          attempt,
+          fixedFile: null,
+          success: false,
+          error: "Debug agent did not return a valid file.",
+          execution: {
+            stage: execution.stage,
+            stdout: execution.stdout,
+            stderr: execution.stderr,
+            exitCode: execution.exitCode,
+            timedOut: execution.timedOut,
+          },
+        });
+        break;
+      }
+
+      writeFile(debuggedFile.filename, debuggedFile.code);
+
+      if (!generatedFiles.includes(debuggedFile.filename)) {
+        generatedFiles.push(debuggedFile.filename);
+      }
+
+      execution = await runGeneratedProject();
+      debugAttempts.push({
+        attempt,
+        fixedFile: debuggedFile.filename,
+        success: execution.success,
+        error: null,
+        execution: {
+          stage: execution.stage,
+          stdout: execution.stdout,
+          stderr: execution.stderr,
+          exitCode: execution.exitCode,
+          timedOut: execution.timedOut,
+        },
+      });
+    }
+
+    return res.json({
+      success: execution.success,
+      plan,
+      generatedFiles,
       skippedTasks,
+      execution,
+      debugAttempts,
     });
   } catch (error) {
     console.error("[BUILD] Build error:", error);

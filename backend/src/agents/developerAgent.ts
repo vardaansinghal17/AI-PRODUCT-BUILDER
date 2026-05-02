@@ -1,30 +1,15 @@
 import { generateText } from "../services/aiService";
+import { getProjectContext } from "../services/fileService";
+import { parseAIJSONObject } from "../utils/json";
 
 export interface GeneratedFile {
   filename: string;
   code: string;
 }
 
-function extractJSON(text: string): string | null {
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-
-  if (start === -1 || end === -1 || end < start) {
-    return null;
-  }
-
-  return text.substring(start, end + 1);
-}
-
 function parseGeneratedFile(response: string): GeneratedFile | null {
-  const cleaned = extractJSON(response);
-
-  if (!cleaned) {
-    return null;
-  }
-
   try {
-    const parsed = JSON.parse(cleaned) as Partial<GeneratedFile>;
+    const parsed = parseAIJSONObject<Partial<GeneratedFile>>(response);
     const filename =
       typeof parsed.filename === "string" ? parsed.filename.trim() : "";
     const code = typeof parsed.code === "string" ? parsed.code : "";
@@ -42,34 +27,36 @@ function parseGeneratedFile(response: string): GeneratedFile | null {
   }
 }
 
-export async function developerAgent(
-  task: string,
-  context: string
-): Promise<GeneratedFile | null> {
+export async function developerAgent(task: string): Promise<GeneratedFile | null> {
+  const existingProjectContext = getProjectContext();
   const prompt = `
-You are a senior TypeScript engineer working inside a real existing project.
+You are a senior TypeScript engineer.
 
-Your job is to make one clean project change for the task below while staying consistent with the current codebase.
-
-PROJECT CONTEXT:
-${context || "No existing generated files yet."}
+Implement exactly one coding task by returning exactly one file.
 
 TASK:
 ${task}
 
+EXISTING PROJECT FILES:
+${existingProjectContext || "No generated files yet."}
+
 RULES:
 - Return ONLY valid JSON
-- Return exactly one file
-- Update an existing file when appropriate instead of creating duplicates
-- Never invent duplicate filenames for the same responsibility
-- Maintain consistency with current imports, scripts, file structure, and naming
+- Only ONE file per task
+- No explanations
+- No markdown
 - Return the full file contents, not a diff
 - Use a meaningful relative filename like src/index.ts or package.json
+- The file must stay consistent with the existing project files
+- If you create or update HTML, include links to the other relevant pages when appropriate
+- If HTML references CSS or JS assets, use paths that actually match files in the project
+- For landing pages or static sites, prefer plain HTML/CSS/JS files over unrelated TypeScript/React files unless the existing project already uses them
+- Avoid placeholder content like "sample page", "your company", or empty sections
 
 FORMAT:
 {
-  "filename": "src/example.ts",
-  "code": "FULL FILE CONTENT"
+  "filename": "src/file.ts",
+  "code": "..."
 }
 `;
 
