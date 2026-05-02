@@ -1,35 +1,29 @@
 import { generateText } from "../services/aiService";
+import { parseAIJSONObject } from "../utils/json";
 
-interface Plan {
+export interface Plan {
   tasks: string[];
-}
-
-function extractJSON(raw: string): string {
-  const cleaned = raw.replace(/```json/g, "").replace(/```/g, "").trim();
-  const start = cleaned.indexOf("{");
-  const end = cleaned.lastIndexOf("}");
-
-  if (start === -1 || end === -1) {
-    throw new Error("No JSON found in planner response");
-  }
-
-  return cleaned.substring(start, end + 1);
 }
 
 export async function plannerAgent(idea: string): Promise<Plan> {
   const prompt = `
 You are a senior software architect.
 
-Break the following project idea into clear development steps.
+Break the following project idea into coding-only implementation steps for a small, coherent generated project.
 
 Rules:
-- Keep steps practical and ordered
-- Each step should be small and actionable
-- Focus on full-stack web development
+- Return ONLY coding-related tasks
+- Do not include documentation, marketing, deployment, or business steps
+- Keep tasks practical, ordered, and implementation-focused
+- Each task should be small and actionable
+- The tasks must work together as one project, not unrelated components
+- Prefer tasks that produce a complete static website structure when the idea is a landing page or website
+- Include shared assets and navigation if multiple pages are needed
+- Mention concrete target files in the tasks when possible, such as src/index.html, src/about.html, src/contact.html, src/styles.css, or src/app.js
 
 Return ONLY valid JSON in this format:
 {
-  "tasks": ["step1", "step2", "step3"]
+  "tasks": ["task1", "task2"]
 }
 
 Idea:
@@ -39,13 +33,18 @@ ${idea}
   const response = await generateText(prompt);
 
   try {
-    const parsed: Plan = JSON.parse(extractJSON(response));
+    const parsed = parseAIJSONObject<Plan>(response);
 
-    if (!Array.isArray(parsed.tasks)) {
-      throw new Error("Planner response must include a tasks array");
+    if (
+      !Array.isArray(parsed.tasks) ||
+      parsed.tasks.some((task) => typeof task !== "string" || !task.trim())
+    ) {
+      throw new Error("Planner response must include a valid tasks array");
     }
 
-    return parsed;
+    return {
+      tasks: parsed.tasks.map((task) => task.trim()),
+    };
   } catch (error) {
     console.error("Planner parsing error:", response);
     throw new Error("Invalid JSON from planner agent");
