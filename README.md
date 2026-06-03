@@ -19,11 +19,14 @@ npm run dev
 ## API
 
 - `POST /api/plan` generates a task plan from a product idea
-- `POST /api/build` generates code, runs it, and retries fixes automatically
+- `POST /api/build` creates a new build session, generates code, runs it, and retries fixes automatically
+- `POST /api/build/:sessionId/refine` continues a previous session with a new refinement prompt
+- `GET /api/build/:sessionId/history` returns the stored build history and snapshots for a session
 - `GET /api/test-ai` checks the AI connection
 
 ## Notes
 
 - Backend source lives in `backend/src`
 - Generated app files live in `backend/generated`
+- Build sessions and snapshots live in `backend/sessions`
 - The build pipeline is context-aware and includes basic auto-debugging

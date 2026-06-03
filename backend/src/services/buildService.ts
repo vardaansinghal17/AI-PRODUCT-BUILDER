@@ -8,6 +8,11 @@ import {
   resetGeneratedDir,
   writeFile,
 } from "./fileService";
+import {
+  createBuildSession,
+  restoreLatestBuildSnapshot,
+  saveBuildToSession,
+} from "./sessionService";
 
 const MAX_DEBUG_ATTEMPTS = 3;
 
@@ -25,7 +30,7 @@ export interface DebugAttemptResult {
   };
 }
 
-export interface BuildPipelineResult {
+export interface BaseBuildPipelineResult {
   success: boolean;
   plan: {
     tasks: string[];
@@ -43,6 +48,12 @@ export interface BuildPipelineResult {
   debugAttempts: DebugAttemptResult[];
 }
 
+export interface BuildPipelineResult extends BaseBuildPipelineResult {
+  sessionId: string;
+  buildNumber: number;
+  mode: "new" | "refine";
+}
+
 export interface BuildProgressEvent {
   type: string;
   message: string;
@@ -51,6 +62,11 @@ export interface BuildProgressEvent {
 }
 
 type ProgressCallback = (event: BuildProgressEvent) => void;
+
+interface RunBuildPipelineOptions {
+  sessionId?: string;
+  mode?: "new" | "refine";
+}
 
 function emitProgress(
   onProgress: ProgressCallback | undefined,
@@ -68,17 +84,30 @@ function emitProgress(
 
 export async function runBuildPipeline(
   idea: string,
-  onProgress?: ProgressCallback
+  onProgress?: ProgressCallback,
+  options: RunBuildPipelineOptions = {}
 ): Promise<BuildPipelineResult> {
+  const mode = options.mode ?? "new";
+  const session =
+    options.sessionId !== undefined
+      ? restoreLatestBuildSnapshot(options.sessionId)
+      : createBuildSession();
+
   emitProgress(onProgress, "build.started", "Build started", {
     idea,
+    sessionId: session.sessionId,
+    mode,
   });
 
-  resetGeneratedDir();
+  if (mode === "new") {
+    resetGeneratedDir();
+  }
+
   ensureGeneratedProjectScaffold();
+  const existingProjectContext = getProjectContext();
 
   emitProgress(onProgress, "planning.started", "Generating implementation plan");
-  const plan = await plannerAgent(idea);
+  const plan = await plannerAgent(idea, existingProjectContext);
   emitProgress(onProgress, "planning.completed", "Plan generated", {
     totalTasks: plan.tasks.length,
     tasks: plan.tasks,
@@ -210,16 +239,31 @@ export async function runBuildPipeline(
     });
   }
 
-  const result: BuildPipelineResult = {
+  const persistedBuild = saveBuildToSession(session.sessionId, idea, mode, {
     success: execution.success,
     plan,
     generatedFiles,
     skippedTasks,
     execution,
     debugAttempts,
+  });
+
+  const result: BuildPipelineResult = {
+    sessionId: session.sessionId,
+    buildNumber: persistedBuild.buildNumber,
+    mode,
+    success: persistedBuild.success,
+    plan: persistedBuild.plan,
+    generatedFiles: persistedBuild.generatedFiles,
+    skippedTasks: persistedBuild.skippedTasks,
+    execution: persistedBuild.execution,
+    debugAttempts: persistedBuild.debugAttempts,
   };
 
   emitProgress(onProgress, "build.completed", "Build pipeline completed", {
+    sessionId: result.sessionId,
+    buildNumber: result.buildNumber,
+    mode: result.mode,
     success: result.success,
     generatedFiles: result.generatedFiles,
     skippedTasks: result.skippedTasks,
