@@ -69,5 +69,7 @@ app.listen(PORT, () => {
     testAI: `http://localhost:${PORT}/api/test-ai`,
     plan: `http://localhost:${PORT}/api/plan`,
     build: `http://localhost:${PORT}/api/build`,
+    refine: `http://localhost:${PORT}/api/build/:sessionId/refine`,
+    buildHistory: `http://localhost:${PORT}/api/build/:sessionId/history`,
   });
 });
